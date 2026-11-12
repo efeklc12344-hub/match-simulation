@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bouncing Balls Match Simulation</title>
+  <style>
+    :root {
+      --bg: #0d2818;
+      --panel: rgba(15, 23, 42, 0.9);
+      --blue: #3b82f6;
+      --red: #ef4444;
+      --yellow: #facc15;
+      --text: #f8fafc;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; height: 100%; background: var(--bg); overflow: hidden; font-family: Arial, sans-serif;
+    }
+    body { display: flex; align-items: center; justify-content: center; color: var(--text); }
+    #app {
+      position: relative; width: 100vw; height: 100vh; background: radial-gradient(circle at center, #1b4d2e 0%, #0d2818 100%);
+    }
+    #setup-screen, #end-screen {
+      position: absolute; inset: 0; background: rgba(2, 6, 23, 0.8); display: flex; align-items: center; justify-content: center; z-index: 10;
+    }
+    .card {
+      width: min(92vw, 480px); background: var(--panel); border: 1px solid rgba(255,255,255,0.15); border-radius: 24px; padding: 24px; box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+    }
+    h1 { text-align: center; margin: 0 0 20px; font-size: clamp(1.5rem, 3vw, 2.5rem); }
+    .field { display: grid; gap: 12px; margin-bottom: 18px; }
+    label { font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; }
+    input {
+      width: 100%; padding: 14px 16px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.2); background: rgba(15, 23, 42, 0.6); color: white; font-size: 16px; outline: none;
+    }
+    button {
+      width: 100%; background: linear-gradient(135deg, #facc15, #eab308); color: #111827; border: none; border-radius: 12px; padding: 14px 18px; font-size: 14px; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer;
+    }
+    #gameCanvas {
+      position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+      width: min(96vw, 1000px); height: min(96vh, 1800px); background: transparent; display: block;
+    }
+    .hud {
+      position: absolute; top: 18px; left: 50%; transform: translateX(-50%); width: min(92vw, 640px); background: rgba(15,23,42,0.8); border: 1px solid rgba(255,255,255,0.15); border-radius: 20px; padding: 12px 14px; z-index: 4;
+    }
+    .hud-row {
+      display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px;
+    }
+    .team { text-align: center; font-weight: 800; font-size: clamp(0.9rem, 2vw, 1.2rem); }
+    .team.blue { color: #60a5fa; }
+    .team.red { color: #f87171; }
+    .score { font-size: clamp(1.5rem, 5vw, 3rem); font-weight: 900; letter-spacing: 0.04em; }
+    .time { font-size: clamp(0.8rem, 2vw, 1.2rem); color: var(--yellow); font-weight: 900; letter-spacing: 0.12em; }
+    #goalText {
+      position: absolute; left: 50%; top: 48%; transform: translate(-50%, -50%); font-size: clamp(2rem, 7vw, 5rem); font-weight: 900; color: #facc15; text-shadow: 0 0 18px rgba(250,204,21,0.8); z-index: 8; opacity: 0;
+    }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="setup-screen">
+      <div class="card">
+        <h1>Game Setup</h1>
+        <div class="field">
+          <label for="team1">Blue Ball (Team 1)</label>
+          <input id="team1" value="Home Team" maxlength="15" />
+        </div>
+        <div class="field">
+          <label for="team2">Red Ball (Team 2)</label>
+          <input id="team2" value="Away Team" maxlength="15" />
+        </div>
+        <button id="startBtn">Start Simulation</button>
+      </div>
+    </div>
+
+    <div id="hud" class="hud hidden">
+      <div class="hud-row">
+        <div id="team1Name" class="team blue">Home Team</div>
+        <div id="score" class="score">0 - 0</div>
+        <div id="team2Name" class="team red">Away Team</div>
+      </div>
+      <div style="text-align:center; margin-top: 8px;" id="time" class="time">00:00</div>
+    </div>
+
+    <div id="goalText">GOAL!</div>
+    <canvas id="gameCanvas" width="900" height="1600"></canvas>
+
+    <div id="end-screen" class="hidden">
+      <div class="card" style="text-align:center;">
+        <h1>Match Finished</h1>
+        <div style="font-size: 2rem; margin: 18px 0; font-weight: 900;" id="finalScore">0 - 0</div>
+        <button id="restartBtn" style="margin-top:12px;">Play Again</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const setupScreen = document.getElementById('setup-screen');
+    const endScreen = document.getElementById('end-screen');
+    const hud = document.getElementById('hud');
+    const goalText = document.getElementById('goalText');
+    const scoreEl = document.getElementById('score');
+    const timeEl = document.getElementById('time');
+    const finalScoreEl = document.getElementById('finalScore');
+
+    let team1 = 'Home Team';
+    let team2 = 'Away Team';
+    let score1 = 0;
+    let score2 = 0;
+    let running = false;
+    let matchTime = 0;
+    let last = 0;
+    let goalFlash = 0;
+    let isGoal = false;
+    let gameOver = false;
+
+    const arena = { x: 450, y: 800, radius: 260 };
+    let goalAngle = 0.25;
+    let goalRotation = 0;
+    let grace = 1200;
+
+    const balls = [
+      { x: 450, y: 850, vx: 4.5, vy: 2.5, r: 30, color: '#3b82f6', team: 1 },
+      { x: 450, y: 750, vx: -3.2, vy: -2.3, r: 30, color: '#ef4444', team: 2 }
+    ];
+
+    function setTeams() {
+      team1 = document.getElementById('team1').value.trim() || 'Home Team';
+      team2 = document.getElementById('team2').value.trim() || 'Away Team';
+      document.getElementById('team1Name').textContent = team1;
+      document.getElementById('team2Name').textContent = team2;
+    }
+
+    function resetBallPositions() {
+      balls[0].x = 450; balls[0].y = 820; balls[0].vx = 4.5; balls[0].vy = 2.5;
+      balls[1].x = 450; balls[1].y = 780; balls[1].vx = -3.2; balls[1].vy = -2.7;
+      grace = 1200;
+      goalRotation = 0;
+    }
+
+    function startGame() {
+      setTeams();
+      score1 = 0; score2 = 0; scoreEl.textContent = '0 - 0'; finalScoreEl.textContent = '0 - 0';
+      matchTime = 0; gameOver = false; running = true; isGoal = false; goalFlash = 0;
+      setupScreen.classList.add('hidden');
+      hud.classList.remove('hidden');
+      endScreen.classList.add('hidden');
+      resetBallPositions();
+      requestAnimationFrame(loop);
+    }
+
+    function endGame() {
+      gameOver = true;
+      running = false;
+      finalScoreEl.textContent = `${score1} - ${score2}`;
+      endScreen.classList.remove('hidden');
+    }
+
+    function clampBall(ball) {
+      const dx = ball.x - arena.x;
+      const dy = ball.y - arena.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist + ball.r > arena.radius) {
+        const nx = dx / (dist || 1);
+        const ny = dy / (dist || 1);
+        ball.x = arena.x + nx * (arena.radius - ball.r);
+        ball.y = arena.y + ny * (arena.radius - ball.r);
+        const dot = ball.vx * nx + ball.vy * ny;
+        ball.vx -= 2 * dot * nx;
+        ball.vy -= 2 * dot * ny;
+      }
+    }
+
+    function goalCheck() {
+      if (gameOver || isGoal || grace > 0) return;
+      for (const ball of balls) {
+        const dx = ball.x - arena.x;
+        const dy = ball.y - arena.y;
+        const dist = Math.hypot(dx, dy);
+        const angle = Math.atan2(dy, dx);
+        let diff = angle - goalRotation;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        const inGoalOpening = Math.abs(diff) < goalAngle && dist + ball.r > arena.radius;
+        if (inGoalOpening) {
+          if (ball.team === 1) score1 += 1; else score2 += 1;
+          scoreEl.textContent = `${score1} - ${score2}`;
+          isGoal = true;
+          goalFlash = 1200;
+          goalText.style.opacity = '1';
+          setTimeout(() => {
+            goalText.style.opacity = '0';
+            isGoal = false;
+            resetBallPositions();
+          }, 650);
+          return;
+        }
+      }
+    }
+
+    function update(dt) {
+      if (!running) return;
+      matchTime += dt;
+      if (matchTime >= 90000) {
+        running = false;
+        endGame();
+        return;
+      }
+      if (grace > 0) grace -= dt;
+      goalRotation += 0.012 * (dt / 16.67);
+      goalText.style.opacity = goalFlash > 0 ? '1' : '0';
+      if (goalFlash > 0) goalFlash -= dt;
+
+      for (const ball of balls) {
+        ball.x += ball.vx * (dt / 16.67);
+        ball.y += ball.vy * (dt / 16.67);
+        clampBall(ball);
+      }
+
+      const a = balls[0]; const b = balls[1];
+      const dx = b.x - a.x; const dy = b.y - a.y;
+      const dist = Math.hypot(dx, dy) || 0.1;
+      const minDist = a.r + b.r;
+      if (dist < minDist) {
+        const nx = dx / dist; const ny = dy / dist;
+        const overlap = (minDist - dist) / 2;
+        a.x -= nx * overlap; a.y -= ny * overlap;
+        b.x += nx * overlap; b.y += ny * overlap;
+
+        const rvx = b.vx - a.vx; const rvy = b.vy - a.vy;
+        const velAlongNormal = rvx * nx + rvy * ny;
+        if (velAlongNormal < 0) {
+          const impulse = (-velAlongNormal) / 2;
+          a.vx -= impulse * nx; a.vy -= impulse * ny;
+          b.vx += impulse * nx; b.vy += impulse * ny;
+        }
+      }
+
+      const t = Math.floor(matchTime / 1000);
+      const minutes = String(Math.floor(t / 60)).padStart(2, '0');
+      const seconds = String(t % 60).padStart(2, '0');
+      timeEl.textContent = `${minutes}:${seconds}`;
+      goalCheck();
+    }
+
+    function drawArcGoal() {
+      ctx.save();
+      ctx.translate(arena.x, arena.y);
+      ctx.rotate(goalRotation);
+      ctx.beginPath();
+      ctx.arc(0, 0, arena.radius, -goalAngle, goalAngle);
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      ctx.lineWidth = 6;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(0, 0, arena.radius + 30, -goalAngle, goalAngle);
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      if (grace > 0) {
+        ctx.beginPath();
+        ctx.arc(0, 0, arena.radius, -goalAngle, goalAngle);
+        ctx.strokeStyle = 'rgba(239,68,68,0.9)';
+        ctx.lineWidth = 8;
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawBall(ball) {
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+      ctx.fillStyle = ball.color;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.r * 0.52, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      ctx.fill();
+    }
+
+    function drawPitch() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const grd = ctx.createRadialGradient(450, 800, 60, 450, 800, 900);
+      grd.addColorStop(0, '#1b4d2e');
+      grd.addColorStop(1, '#0d2818');
+      ctx.fillStyle = grd;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.beginPath();
+      ctx.arc(arena.x, arena.y, arena.radius, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(450, 640);
+      ctx.lineTo(450, 960);
+      ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      drawArcGoal();
+      for (const ball of balls) drawBall(ball);
+    }
+
+    function loop(ts) {
+      if (!running) return;
+      const dt = Math.min(32, ts - (last || ts));
+      last = ts;
+      update(dt);
+      drawPitch();
+      scoreEl.textContent = `${score1} - ${score2}`;
+      requestAnimationFrame(loop);
+    }
+
+    document.getElementById('startBtn').addEventListener('click', startGame);
+    document.getElementById('restartBtn').addEventListener('click', startGame);
+    drawPitch();
+  </script>
+</body>
+</html>
